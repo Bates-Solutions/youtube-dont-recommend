@@ -27,7 +27,7 @@ The toolbar popup lists the channels you've told YouTube about, lets you rebind
 the shortcut, and exports the list as JSON.
 
 No accounts, no tracking, no data sent to the developer. You need to be signed in
-to YouTube, and it currently works with YouTube in English.
+to YouTube.
 
 ## Category
 
@@ -40,10 +40,14 @@ they're watching, from the watch page.
 
 ## Permission justifications (required)
 
-- storage: Save the list of channels the user has signalled, and their keyboard
-  shortcut, locally.
+- storage: Save, locally, the list of channels the user has signalled, their
+  keyboard shortcut, and the "Don't recommend channel" commands YouTube attached
+  to the videos it showed them, so the watch-page button can send the right one.
 - Host permission (https://www.youtube.com/*): Add the button and shortcut to the
-  watch page, and trigger YouTube's own "Don't recommend channel" menu action.
+  watch page; read the "Don't recommend channel" command that YouTube includes
+  with each recommended video (a script in the page reads YouTube's own page data
+  and responses for this, and changes nothing); and ask YouTube's page to send
+  that command, exactly as its own 3-dots menu does.
 
 ## Data usage disclosures (check these)
 

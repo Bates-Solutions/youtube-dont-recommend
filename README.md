@@ -21,15 +21,22 @@ channel.
 ## What it does and doesn't do
 
 - It **does** send YouTube's "Don't recommend channel" feedback, once per click.
-  To do that it finds one of the channel's videos in the recommendations next to
-  the video, opens that video's 3-dots menu (hidden, so nothing flashes) and
-  clicks the item.
 - It **doesn't** hide anything itself. What you see afterwards is up to YouTube's
   recommendations.
-- If none of the channel's videos are in the recommendations yet, it says so;
-  scroll the sidebar and try again.
-- You need to be signed in to YouTube; signed out, the menu has no "Don't
-  recommend channel" item.
+- You need to be signed in to YouTube; signed out, YouTube offers no "Don't
+  recommend channel" option.
+
+Every video thumbnail YouTube shows you comes with its own "Don't recommend
+channel" token, the one its 3-dots menu would send. The extension keeps the
+tokens it sees, so when you click a thumbnail and then hit the button on the
+watch page, it sends that video's token. If it has none for the video (a direct
+link, or a page you reloaded), it uses the newest token it has seen for the same
+channel.
+
+If it has no token for the channel at all, it falls back to one of the channel's
+videos in the recommendations next to the video: it opens that video's 3-dots
+menu (hidden, so nothing flashes) and clicks the item. If none of the channel's
+videos are there either, it says so; scroll the sidebar and try again.
 
 ## Install (unpacked)
 
@@ -55,16 +62,41 @@ not one channel.
 
 ## How it works
 
-- `content.js` runs on `youtube.com`, adds the watch-page button and the shortcut,
-  and drives the 3-dots menu of one of the current channel's recommendation cards.
-  A `MutationObserver` and YouTube's `yt-navigate-finish` events keep the button
-  in place through the site's single-page navigation.
-- The list of channels you've signalled, and your shortcut, live in
+- `page.js` runs in YouTube's own page context (`"world": "MAIN"`), because the
+  content script can't see YouTube's page data. It reads the "Don't recommend
+  channel" command off each video card in `ytInitialData`, the
+  `yt-navigate-finish` event and the responses to YouTube's own `/youtubei/v1`
+  requests, picking it by its icon (`REMOVE`) rather than its text. To send one,
+  it hands the command to YouTube's own command dispatch, so YouTube sends it
+  with your sign-in, and it checks YouTube's `/youtubei/v1/feedback` response to
+  confirm it was processed.
+- `content.js` adds the watch-page button and the shortcut, saves the tokens by
+  video ID, chooses which one to send, and runs the sidebar fallback. A
+  `MutationObserver` and YouTube's `yt-navigate-finish` events keep the button in
+  place through the site's single-page navigation.
+- Saved tokens (up to 1,000, newest kept), the list of channels you've signalled,
+  your shortcut, and a log of the last 100 token sends live in
   `chrome.storage.local`.
+
+## Tests
+
+```sh
+node --test test/*.test.mjs
+```
+
+The tests run `page.js` against sample YouTube data with the browser stubbed out.
+They need Node 22 or later and nothing else. `test/` isn't part of the extension;
+leave it out of the store zip.
 
 ## Notes / limits
 
-- It matches the menu item by the text "…recommend channel", so it currently
-  works on **English** YouTube only.
-- YouTube changes its DOM often. If the button stops appearing or the signal stops
-  sending, the selectors in `content.js` may need a refresh.
+- The token path doesn't depend on YouTube's language. The sidebar fallback
+  matches the menu item by the text "…recommend channel", so the fallback works
+  on **English** YouTube only.
+- How long a saved token stays valid isn't known yet. Each send's token age is in
+  the send log; a token YouTube no longer accepts falls back to the sidebar.
+- The command dispatch YouTube uses isn't a documented API. `page.js` tries two
+  ways of calling it and records which one worked.
+- YouTube changes its page data and DOM often. If the button stops appearing or
+  the signal stops sending, `page.js` and the selectors in `content.js` may need a
+  refresh.
