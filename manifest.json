@@ -3,8 +3,12 @@
   "name": "YouTube: Don't Recommend Channel",
   "version": "1.1.0",
   "description": "One-click 'Don't recommend channel' while watching. Adds a button (and shortcut) to the watch page that sends YouTube's own block signal for the current channel.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://www.youtube.com/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Blocked channels",
@@ -23,11 +27,28 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
-  ]
+  ],
+  "minimum_chrome_version": "111"
 }

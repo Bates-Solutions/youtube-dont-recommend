@@ -226,6 +226,150 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Saved feedback tokens (prototype)                                  */
+  /* page.js reads the "Don't recommend channel" command off every card */
+  /* YouTube sends and passes it here; we save it by video ID, so the   */
+  /* watch page can send it later, even in another tab.                 */
+  /* ------------------------------------------------------------------ */
+
+  const TOKENS_KEY = "feedbackTokens";
+  const SEND_LOG_KEY = "tokenSendLog";
+  const MAX_TOKENS = 1000;
+  let tokens = {}; // videoId -> { channelId, handle, command, at }
+  let pendingTokens = {};
+  let flushTimer = null;
+  const owners = {}; // videoId -> channelId, from the player response
+
+  function loadTokens() {
+    chrome.storage.local.get(TOKENS_KEY, (res) => {
+      tokens = res[TOKENS_KEY] || {};
+    });
+  }
+
+  function flushTokens() {
+    flushTimer = null;
+    const fresh = pendingTokens;
+    pendingTokens = {};
+    chrome.storage.local.get(TOKENS_KEY, (res) => {
+      const all = { ...(res[TOKENS_KEY] || {}), ...fresh };
+      const ids = Object.keys(all);
+      if (ids.length > MAX_TOKENS) {
+        ids
+          .sort((a, b) => all[b].at - all[a].at)
+          .slice(MAX_TOKENS)
+          .forEach((id) => delete all[id]);
+      }
+      tokens = all;
+      chrome.storage.local.set({ [TOKENS_KEY]: all });
+    });
+  }
+
+  const tokenOf = (entry) => entry?.command?.feedbackEndpoint?.feedbackToken;
+
+  document.addEventListener("ydr:tokens", (e) => {
+    let items;
+    try {
+      items = JSON.parse(e.detail).items;
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    for (const it of items || []) {
+      if (!it.videoId || !tokenOf(it)) continue;
+      const old = pendingTokens[it.videoId] || tokens[it.videoId];
+      // Keep the first-seen time while the token is unchanged, so a send can
+      // report how old the token was.
+      const at = old && tokenOf(old) === tokenOf(it) ? old.at : now;
+      pendingTokens[it.videoId] = {
+        channelId: it.channelId || "",
+        handle: it.handle || "",
+        command: it.command,
+        at,
+      };
+    }
+    if (!flushTimer) flushTimer = setTimeout(flushTokens, 1000);
+  });
+
+  document.addEventListener("ydr:owner", (e) => {
+    try {
+      const o = JSON.parse(e.detail);
+      if (o.videoId && o.channelId) owners[o.videoId] = o.channelId;
+    } catch {}
+  });
+
+  // The token for this video (the card that was clicked to get here), else the
+  // newest saved token for this channel.
+  function findToken(cur) {
+    const all = { ...tokens, ...pendingTokens };
+    const videoId = new URLSearchParams(location.search).get("v");
+    if (videoId && all[videoId]) return { ...all[videoId], videoId, via: "this video" };
+
+    const ids = new Set(cur.keys.filter((k) => k.startsWith("id:")).map((k) => k.slice(3)));
+    if (videoId && owners[videoId]) ids.add(owners[videoId]);
+    const handles = new Set(
+      cur.keys.filter((k) => k.startsWith("handle:")).map((k) => k.slice(7))
+    );
+    let best = null;
+    for (const [vid, e] of Object.entries(all)) {
+      const match = (e.channelId && ids.has(e.channelId)) || (e.handle && handles.has(e.handle));
+      if (match && (!best || e.at > best.at)) best = { ...e, videoId: vid, via: "same channel" };
+    }
+    return best;
+  }
+
+  let sendSeq = 0;
+  function sendToken(entry) {
+    return new Promise((resolve) => {
+      const id = ++sendSeq;
+      const onSent = (e) => {
+        let r;
+        try {
+          r = JSON.parse(e.detail);
+        } catch {
+          return;
+        }
+        if (r.id === id) done(r);
+      };
+      const timer = setTimeout(() => done({ ok: false, error: "no reply from page.js" }), 12000);
+      function done(r) {
+        clearTimeout(timer);
+        document.removeEventListener("ydr:sent", onSent);
+        resolve(r);
+      }
+      document.addEventListener("ydr:sent", onSent);
+      document.dispatchEvent(
+        new CustomEvent("ydr:send", { detail: JSON.stringify({ id, command: entry.command }) })
+      );
+    });
+  }
+
+  function ageLabel(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 60) return m + " min";
+    const h = Math.round(m / 6) / 10;
+    return h < 48 ? h + " h" : Math.round(h / 24) + " days";
+  }
+
+  function logSend(entry, r) {
+    const row = {
+      at: Date.now(),
+      videoId: entry.videoId,
+      channelId: entry.channelId,
+      via: entry.via,
+      tokenAgeMin: Math.round((Date.now() - entry.at) / 60000),
+      ok: !!r.ok,
+      method: r.method || "",
+      error: r.error || "",
+    };
+    console.info("[ydr] token send", row);
+    chrome.storage.local.get(SEND_LOG_KEY, (res) => {
+      const log = Array.isArray(res[SEND_LOG_KEY]) ? res[SEND_LOG_KEY] : [];
+      log.unshift(row);
+      chrome.storage.local.set({ [SEND_LOG_KEY]: log.slice(0, 100) });
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Block action (button + shortcut)                                   */
   /* ------------------------------------------------------------------ */
 
@@ -242,6 +386,20 @@
     busy = true;
     setButtonBusy(true);
     try {
+      const entry = findToken(cur);
+      if (entry) {
+        const r = await sendToken(entry);
+        logSend(entry, r);
+        if (r.ok) {
+          recordSignalled(cur.keys, cur.name);
+          toast(
+            `Told YouTube to stop recommending ${label}. (Saved token, ${ageLabel(
+              Date.now() - entry.at
+            )} old, via ${r.method}.)`
+          );
+          return;
+        }
+      }
       const res = await tellYouTube(cur);
       if (res === "sent") {
         recordSignalled(cur.keys, cur.name);
@@ -394,6 +552,7 @@
 
   function start() {
     loadState();
+    loadTokens();
     new MutationObserver(schedule).observe(document.documentElement, {
       childList: true,
       subtree: true,
