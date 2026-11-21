@@ -64,9 +64,14 @@ function render(entries) {
     rm.addEventListener("click", () => {
       // Remove by channel identity, not list index (display is date-sorted while
       // storage keeps insertion order, so indexes wouldn't line up).
+      // An entry with no keys (channel known by name only) is matched by its
+      // name and time instead.
       getHistory((cur) => {
-        const next = cur.filter(
-          (e) => !(e.keys && entry.keys && e.keys.some((k) => entry.keys.includes(k)))
+        const hasKeys = Array.isArray(entry.keys) && entry.keys.length > 0;
+        const next = cur.filter((e) =>
+          hasKeys
+            ? !(e.keys && e.keys.some((k) => entry.keys.includes(k)))
+            : !(e.at === entry.at && e.name === entry.name)
         );
         setHistory(next, () => render(next));
       });

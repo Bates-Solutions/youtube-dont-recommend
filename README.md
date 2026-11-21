@@ -64,14 +64,17 @@ not one channel.
 
 - `page.js` runs in YouTube's own page context (`"world": "MAIN"`), because the
   content script can't see YouTube's page data. It reads the "Don't recommend
-  channel" command off each video card in `ytInitialData`, the
+  channel" token off each video card in `ytInitialData`, the
   `yt-navigate-finish` event and the responses to YouTube's own `/youtubei/v1`
-  requests, picking it by its icon (`REMOVE`) rather than its text. To send one,
-  it hands the command to YouTube's own command dispatch, so YouTube sends it
-  with your sign-in, and it checks YouTube's `/youtubei/v1/feedback` response to
-  confirm it was processed.
-- `content.js` adds the watch-page button and the shortcut, saves the tokens by
-  video ID, chooses which one to send, and runs the sidebar fallback. A
+  requests, picking the item by its icon (`REMOVE`) rather than its text, and
+  passes only the token string on. To send one, it builds the feedback command
+  for that token and hands it to YouTube's own command dispatch, so YouTube sends
+  it with your sign-in, and it checks YouTube's `/youtubei/v1/feedback` response
+  to confirm it was processed.
+- `content.js` adds the watch-page button and the shortcut, validates and saves
+  the tokens by video ID, chooses which one to send (taking the channel from the
+  player response, since the page's owner link can lag behind in-page
+  navigation), and runs the sidebar fallback. A
   `MutationObserver` and YouTube's `yt-navigate-finish` events keep the button in
   place through the site's single-page navigation.
 - Saved tokens (up to 1,000, newest kept), the list of channels you've signalled,

@@ -41,13 +41,15 @@ they're watching, from the watch page.
 ## Permission justifications (required)
 
 - storage: Save, locally, the list of channels the user has signalled, their
-  keyboard shortcut, and the "Don't recommend channel" commands YouTube attached
-  to the videos it showed them, so the watch-page button can send the right one.
+  keyboard shortcut, the "Don't recommend channel" tokens YouTube attached to the
+  videos it showed them (so the watch-page button can send the right one), and a
+  log of the last 100 sends.
 - Host permission (https://www.youtube.com/*): Add the button and shortcut to the
-  watch page; read the "Don't recommend channel" command that YouTube includes
-  with each recommended video (a script in the page reads YouTube's own page data
-  and responses for this, and changes nothing); and ask YouTube's page to send
-  that command, exactly as its own 3-dots menu does.
+  watch page; read the "Don't recommend channel" token that YouTube includes with
+  each recommended video (a script in the page wraps the page's own requests to
+  youtube.com to read their responses; it doesn't change them or send them
+  anywhere); and, when the user clicks, ask YouTube's page to send that feedback,
+  exactly as its own 3-dots menu does.
 
 ## Data usage disclosures (check these)
 

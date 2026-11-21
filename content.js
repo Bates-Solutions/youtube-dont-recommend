@@ -1,8 +1,10 @@
 /* YouTube: Don't Recommend Channel
  * Adds a "Don't recommend" button (and Shift+B shortcut) to the watch page.
  * Clicking it sends YouTube's own "Don't recommend channel" feedback for the
- * channel you're watching — by finding one of that channel's thumbnails in the
- * recommendations and triggering YouTube's real menu action on it.
+ * channel you're watching. First choice: a saved feedback token (page.js reads
+ * them off the video cards YouTube sends; see the "Saved feedback tokens"
+ * section). Fallback: find one of that channel's thumbnails in the
+ * recommendations and trigger YouTube's real menu action on it.
  *
  * It does NOT hide anything locally; it only tells YouTube. That keeps the block
  * account-wide and avoids the refetch loop that per-card hiding caused.
@@ -226,32 +228,72 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Saved feedback tokens (prototype)                                  */
-  /* page.js reads the "Don't recommend channel" command off every card */
+  /* Saved feedback tokens                                              */
+  /* page.js reads the "Don't recommend channel" token off every card   */
   /* YouTube sends and passes it here; we save it by video ID, so the   */
   /* watch page can send it later, even in another tab.                 */
+  /*                                                                    */
+  /* These events come from the page's own world, where any script can  */
+  /* fire them, so every field is checked before it's stored, and only  */
+  /* a bounded token string is kept: page.js builds the command itself. */
   /* ------------------------------------------------------------------ */
 
   const TOKENS_KEY = "feedbackTokens";
   const SEND_LOG_KEY = "tokenSendLog";
   const MAX_TOKENS = 1000;
-  let tokens = {}; // videoId -> { channelId, handle, command, at }
+  let tokens = {}; // videoId -> { channelId, handle, token, at }
   let pendingTokens = {};
   let flushTimer = null;
   const owners = {}; // videoId -> channelId, from the player response
 
+  const VIDEO_ID_RE = /^[\w-]{11}$/;
+  const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
+  const HANDLE_RE = /^@[\w.\-]{1,100}$/;
+  const TOKEN_RE = /^[\w\-=%.]{8,1024}$/;
+
+  // A clean { channelId, handle, token, at } entry, or null.
+  function cleanEntry(e, at) {
+    if (!e || typeof e !== "object") return null;
+    // Entries saved by the prototype held the whole command.
+    const token = e.token ?? e.command?.feedbackEndpoint?.feedbackToken;
+    if (typeof token !== "string" || !TOKEN_RE.test(token)) return null;
+    const channelId = typeof e.channelId === "string" && CHANNEL_ID_RE.test(e.channelId) ? e.channelId : "";
+    const handle = typeof e.handle === "string" && HANDLE_RE.test(e.handle) ? e.handle.toLowerCase() : "";
+    return { channelId, handle, token, at: Number.isFinite(at) ? at : Date.now() };
+  }
+
+  function cleanTokens(raw) {
+    const out = {};
+    if (!raw || typeof raw !== "object") return out;
+    for (const [vid, e] of Object.entries(raw)) {
+      const c = VIDEO_ID_RE.test(vid) && cleanEntry(e, e && e.at);
+      if (c) out[vid] = c;
+    }
+    return out;
+  }
+
   function loadTokens() {
     chrome.storage.local.get(TOKENS_KEY, (res) => {
-      tokens = res[TOKENS_KEY] || {};
+      tokens = cleanTokens(res[TOKENS_KEY]);
     });
   }
 
+  // Tokens saved by other tabs.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[TOKENS_KEY]) {
+      tokens = cleanTokens(changes[TOKENS_KEY].newValue);
+    }
+  });
+
+  // Merge this tab's new tokens into storage. Two tabs flushing at the same
+  // moment can still drop one batch; a dropped token is only a missed shortcut,
+  // since the sidebar fallback still works.
   function flushTokens() {
     flushTimer = null;
     const fresh = pendingTokens;
     pendingTokens = {};
     chrome.storage.local.get(TOKENS_KEY, (res) => {
-      const all = { ...(res[TOKENS_KEY] || {}), ...fresh };
+      const all = { ...cleanTokens(res[TOKENS_KEY]), ...fresh };
       const ids = Object.keys(all);
       if (ids.length > MAX_TOKENS) {
         ids
@@ -264,8 +306,6 @@
     });
   }
 
-  const tokenOf = (entry) => entry?.command?.feedbackEndpoint?.feedbackToken;
-
   document.addEventListener("ydr:tokens", (e) => {
     let items;
     try {
@@ -273,19 +313,17 @@
     } catch {
       return;
     }
+    if (!Array.isArray(items)) return;
     const now = Date.now();
-    for (const it of items || []) {
-      if (!it.videoId || !tokenOf(it)) continue;
+    for (const it of items.slice(0, 500)) {
+      if (!it || !VIDEO_ID_RE.test(it.videoId)) continue;
       const old = pendingTokens[it.videoId] || tokens[it.videoId];
       // Keep the first-seen time while the token is unchanged, so a send can
       // report how old the token was.
-      const at = old && tokenOf(old) === tokenOf(it) ? old.at : now;
-      pendingTokens[it.videoId] = {
-        channelId: it.channelId || "",
-        handle: it.handle || "",
-        command: it.command,
-        at,
-      };
+      const entry = cleanEntry(it, now);
+      if (!entry) continue;
+      if (old && old.token === entry.token) entry.at = old.at;
+      pendingTokens[it.videoId] = entry;
     }
     if (!flushTimer) flushTimer = setTimeout(flushTokens, 1000);
   });
@@ -293,22 +331,33 @@
   document.addEventListener("ydr:owner", (e) => {
     try {
       const o = JSON.parse(e.detail);
-      if (o.videoId && o.channelId) owners[o.videoId] = o.channelId;
+      if (VIDEO_ID_RE.test(o.videoId) && CHANNEL_ID_RE.test(o.channelId)) {
+        owners[o.videoId] = o.channelId;
+      }
     } catch {}
   });
 
   // The token for this video (the card that was clicked to get here), else the
-  // newest saved token for this channel.
+  // newest saved token for this channel. The channel comes from the player
+  // response when page.js has seen it: during YouTube's in-page navigation the
+  // owner link in the DOM can still show the previous video's channel.
   function findToken(cur) {
     const all = { ...tokens, ...pendingTokens };
     const videoId = new URLSearchParams(location.search).get("v");
-    if (videoId && all[videoId]) return { ...all[videoId], videoId, via: "this video" };
+    const owner = videoId && owners[videoId];
+    if (videoId && all[videoId]) {
+      const e = all[videoId];
+      return { ...e, channelId: e.channelId || owner || "", videoId, via: "this video" };
+    }
 
-    const ids = new Set(cur.keys.filter((k) => k.startsWith("id:")).map((k) => k.slice(3)));
-    if (videoId && owners[videoId]) ids.add(owners[videoId]);
-    const handles = new Set(
-      cur.keys.filter((k) => k.startsWith("handle:")).map((k) => k.slice(7))
-    );
+    let ids, handles;
+    if (owner) {
+      ids = new Set([owner]);
+      handles = new Set();
+    } else {
+      ids = new Set(cur.keys.filter((k) => k.startsWith("id:")).map((k) => k.slice(3)));
+      handles = new Set(cur.keys.filter((k) => k.startsWith("handle:")).map((k) => k.slice(7)));
+    }
     let best = null;
     for (const [vid, e] of Object.entries(all)) {
       const match = (e.channelId && ids.has(e.channelId)) || (e.handle && handles.has(e.handle));
@@ -317,10 +366,20 @@
     return best;
   }
 
-  let sendSeq = 0;
+  // The channel keys a token belongs to, for the popup's history.
+  function entryKeys(entry) {
+    const keys = [];
+    if (entry.channelId) keys.push("id:" + entry.channelId);
+    if (entry.handle) keys.push("handle:" + entry.handle);
+    return keys;
+  }
+
   function sendToken(entry) {
     return new Promise((resolve) => {
-      const id = ++sendSeq;
+      // Random, so a page script can't predict it. It can still read it off
+      // the ydr:send event and forge a reply; that only affects this tab's toast
+      // and history, never what is sent to YouTube.
+      const id = crypto.randomUUID();
       const onSent = (e) => {
         let r;
         try {
@@ -328,9 +387,10 @@
         } catch {
           return;
         }
-        if (r.id === id) done(r);
+        if (r && r.id === id) done(r);
       };
-      const timer = setTimeout(() => done({ ok: false, error: "no reply from page.js" }), 12000);
+      // page.js waits up to 6 s for each of its two dispatch methods.
+      const timer = setTimeout(() => done({ ok: false, error: "no reply from page.js" }), 15000);
       function done(r) {
         clearTimeout(timer);
         document.removeEventListener("ydr:sent", onSent);
@@ -338,7 +398,7 @@
       }
       document.addEventListener("ydr:sent", onSent);
       document.dispatchEvent(
-        new CustomEvent("ydr:send", { detail: JSON.stringify({ id, command: entry.command }) })
+        new CustomEvent("ydr:send", { detail: JSON.stringify({ id, token: entry.token }) })
       );
     });
   }
@@ -378,7 +438,8 @@
   async function blockCurrentChannel() {
     if (busy) return;
     const cur = currentWatchChannel();
-    if (!cur.keys.length && !cur.name) {
+    const entry = findToken(cur);
+    if (!entry && !cur.keys.length && !cur.name) {
       toast("Couldn't identify this channel — try again in a second.");
       return;
     }
@@ -386,14 +447,18 @@
     busy = true;
     setButtonBusy(true);
     try {
-      const entry = findToken(cur);
       if (entry) {
         const r = await sendToken(entry);
         logSend(entry, r);
         if (r.ok) {
-          recordSignalled(cur.keys, cur.name);
+          // Record the token's channel, not the DOM's, which can lag behind
+          // in-page navigation. Use the DOM's name only when it agrees.
+          const keys = entryKeys(entry);
+          const agrees = keys.some((k) => cur.keys.includes(k));
+          const name = agrees || !keys.length ? cur.name : "";
+          recordSignalled(keys.length ? keys : cur.keys, name);
           toast(
-            `Told YouTube to stop recommending ${label}. (Saved token, ${ageLabel(
+            `Told YouTube to stop recommending ${name || "this channel"}. (Saved token, ${ageLabel(
               Date.now() - entry.at
             )} old, via ${r.method}.)`
           );
