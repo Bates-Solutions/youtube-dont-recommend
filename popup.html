@@ -6,28 +6,19 @@
   </head>
   <body>
     <header>
-      <h1>Blocked channels</h1>
+      <h1>Channels blocked</h1>
       <span id="count" class="count">0</span>
     </header>
 
     <div id="empty" class="empty" hidden>
       No channels blocked yet.<br />
-      Open a video and hit <strong>🚫 Don't recommend</strong> next to Subscribe.
+      Open a video and hit <strong>🚫 Don't recommend</strong> next to Subscribe
+      to tell YouTube to stop recommending that channel.
     </div>
 
     <ul id="list"></ul>
 
     <section class="settings">
-      <label class="row">
-        <input id="native" type="checkbox" />
-        <span>
-          <strong>Also tell YouTube</strong>
-          <small
-            >Fire YouTube's native "Don't recommend channel" so its algorithm
-            learns too.</small
-          >
-        </span>
-      </label>
       <div class="row">
         <span>
           <strong>Shortcut</strong>
@@ -38,10 +29,9 @@
     </section>
 
     <footer>
+      <span class="foot-note">Sent to YouTube — account-wide.</span>
       <button id="export" class="link-btn">Export</button>
-      <button id="import" class="link-btn">Import</button>
-      <button id="clear" class="link-btn danger">Clear all</button>
-      <input id="import-file" type="file" accept="application/json" hidden />
+      <button id="clear" class="link-btn danger">Clear list</button>
     </footer>
   </body>
   <script src="popup.js"></script>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube: Don't Recommend Channel",
-  "version": "1.0.1",
-  "description": "One-click block any channel while watching. Adds a 'Don't recommend' button to the watch page and hides all videos from blocked channels across YouTube.",
+  "version": "1.1.0",
+  "description": "One-click 'Don't recommend channel' while watching. Adds a button (and shortcut) to the watch page that sends YouTube's own block signal for the current channel.",
   "permissions": ["storage"],
   "host_permissions": ["https://www.youtube.com/*"],
   "action": {
