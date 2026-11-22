@@ -7,3 +7,7 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+
+# Local assistant files (keep out of this public repo)
+CLAUDE.md
+.claude/

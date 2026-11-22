@@ -148,9 +148,15 @@ li .meta {
 
 footer {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 10px 12px;
   border-top: 1px solid rgba(128, 128, 128, 0.25);
+}
+.foot-note {
+  flex: 1;
+  font-size: 11px;
+  color: #888;
 }
 .link-btn {
   border: none;

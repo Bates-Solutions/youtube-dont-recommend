@@ -41,6 +41,12 @@ html:not([dark]) .ydr-block-btn:hover {
   background: #a80000;
 }
 
+.ydr-block-btn.ydr-busy {
+  opacity: 0.6;
+  cursor: default;
+  pointer-events: none;
+}
+
 .ydr-block-btn .ydr-ico {
   font-size: 15px;
   line-height: 1;

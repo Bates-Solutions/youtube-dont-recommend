@@ -1,79 +1,105 @@
 # YouTube: Don't Recommend Channel
 
-A Chromium extension (Chrome / Brave / Edge / Vivaldi) that lets you block a
-channel **while you're watching a video** — no digging through the 3-dots menu
-on a thumbnail.
+A Chromium extension (Chrome / Brave / Edge / Vivaldi) that lets you tell YouTube
+to stop recommending a channel **while you're watching one of its videos**, with
+no digging through the 3-dots menu on a thumbnail.
 
 Watching something and realise it's lazy AI slop? Hit the **🚫 Don't recommend**
-button next to Subscribe. The channel is added to your blocklist and every video
-from it disappears from your home feed, watch sidebar, search results, and
-shorts — instantly and permanently, until you unblock it.
+button next to Subscribe, or press **Shift+B**. The extension sends YouTube's own
+"Don't recommend channel" feedback for that channel, the same signal as the item
+in a thumbnail's 3-dots menu. Because it's YouTube's own signal, it applies to
+your whole account, on every device, not just this browser.
 
-## Block while watching — two ways
+## Block while watching, two ways
 
 - **Button:** hit **🚫 Don't recommend** next to Subscribe.
-- **Keyboard shortcut:** press **Shift+B** (rebindable in the popup) — no reaching
-  for the mouse.
+- **Keyboard shortcut:** press **Shift+B** (rebindable in the popup).
 
-## What blocking does (hybrid: hide + tell YouTube)
+The button changes to **Told YouTube** once you've sent the signal for that
+channel.
 
-Blocking a channel does **both** of these:
+## What it does and doesn't do
 
-1. **Hard local hide (instant).** The channel goes on a local blocklist and every
-   video from it is hidden from your home feed, watch sidebar, search, and shorts
-   — immediately and permanently, until you unblock it. This is a curtain painted
-   over YouTube in your browser; it's instant and never leaks the channel back in.
-2. **Native "Don't recommend channel" (background).** As that channel's videos
-   surface in your feed/sidebar, the extension drives YouTube's *own* 3-dot menu
-   to fire the real "Don't recommend channel" feedback — so **YouTube's algorithm
-   itself** learns to deprioritize the channel on your account, everywhere (not
-   just in this browser). The transient menu popup is visually suppressed, so you
-   don't see menus flashing.
+- It **does** send YouTube's "Don't recommend channel" feedback, once per click.
+- It **doesn't** hide anything itself. What you see afterwards is up to YouTube's
+  recommendations.
+- You need to be signed in to YouTube; signed out, YouTube offers no "Don't
+  recommend channel" option.
 
-The native step is what YouTube's own feature does, but it's normally buried in a
-thumbnail's 3-dot menu and never available on the watch page. You can turn the
-native step off in the popup (leaving pure local hiding) with the **"Also tell
-YouTube"** toggle.
+Every video thumbnail YouTube shows you comes with its own "Don't recommend
+channel" token, the one its 3-dots menu would send. The extension keeps the
+tokens it sees, so when you click a thumbnail and then hit the button on the
+watch page, it sends that video's token. If it has none for the video (a direct
+link, or a page you reloaded), it uses the newest token it has seen for the same
+channel.
 
-Channels are matched by both `@handle` and `UC…` channel ID, so a channel stays
-blocked even if it's linked differently in different places.
+If it has no token for the channel at all, it falls back to one of the channel's
+videos in the recommendations next to the video: it opens that video's 3-dots
+menu (hidden, so nothing flashes) and clicks the item. If none of the channel's
+videos are there either, it says so; scroll the sidebar and try again.
 
 ## Install (unpacked)
 
 1. Open `chrome://extensions` (or `brave://extensions`, `edge://extensions`).
 2. Turn on **Developer mode** (top-right).
 3. Click **Load unpacked** and select this folder.
-4. Open any YouTube video — a **🚫 Don't recommend** button appears next to
+4. Open any YouTube video. A **🚫 Don't recommend** button appears next to
    Subscribe.
 
-## Managing your blocklist
+## The popup
 
 Click the extension's toolbar icon to:
 
-- See every blocked channel (newest first) and jump to its page.
-- Unblock a channel (× button) — its videos reappear immediately.
-- Toggle **"Also tell YouTube"** (native feedback) on/off.
+- See the channels you've told YouTube about (newest first) and open their pages.
+- Remove a channel from that list (× button). This only edits the list; it
+  doesn't undo the signal at YouTube.
 - Rebind the keyboard **Shortcut** (click it, then press your combo).
-- **Export** / **Import** your list as JSON, or **Clear all**.
+- **Export** the list as JSON, or **Clear list**.
+
+To undo it, use Google's own controls: in My Activity, under "Other activity",
+"YouTube 'Not interested' feedback" can be deleted. That clears all of it at once,
+not one channel.
 
 ## How it works
 
-- `content.js` runs on `youtube.com`, injects the watch-page button, and hides
-  any video renderer whose channel link matches the blocklist. A
-  `MutationObserver` plus YouTube's `yt-navigate-finish` events keep it working
-  through the site's single-page navigation and infinite scroll.
-- The blocklist lives in `chrome.storage.local`.
+- `page.js` runs in YouTube's own page context (`"world": "MAIN"`), because the
+  content script can't see YouTube's page data. It reads the "Don't recommend
+  channel" token off each video card in `ytInitialData`, the
+  `yt-navigate-finish` event and the responses to YouTube's own `/youtubei/v1`
+  requests, picking the item by its icon (`REMOVE`) rather than its text, and
+  passes only the token string on. To send one, it builds the feedback command
+  for that token and hands it to YouTube's own command dispatch, so YouTube sends
+  it with your sign-in, and it checks YouTube's `/youtubei/v1/feedback` response
+  to confirm it was processed.
+- `content.js` adds the watch-page button and the shortcut, validates and saves
+  the tokens by video ID, chooses which one to send (taking the channel from the
+  player response, since the page's owner link can lag behind in-page
+  navigation), and runs the sidebar fallback. A
+  `MutationObserver` and YouTube's `yt-navigate-finish` events keep the button in
+  place through the site's single-page navigation.
+- Saved tokens (up to 1,000, newest kept), the list of channels you've signalled,
+  your shortcut, and a log of the last 100 token sends live in
+  `chrome.storage.local`.
+
+## Tests
+
+```sh
+node --test test/*.test.mjs
+```
+
+The tests run `page.js` against sample YouTube data with the browser stubbed out.
+They need Node 22 or later and nothing else. `test/` isn't part of the extension;
+leave it out of the store zip.
 
 ## Notes / limits
 
-- The **hide** step is purely local (nothing leaves your browser). The **native
-  feedback** step uses YouTube's own menu action, so it does talk to YouTube —
-  that's the point of it. Turn it off with the "Also tell YouTube" toggle if you
-  want hiding only.
-- Native feedback only fires as a blocked channel's videos actually appear in
-  your feed/sidebar (that's where YouTube's feedback token lives). It's driven
-  one menu at a time and matches the menu item by the text "…recommend channel",
-  so it currently targets **English** YouTube.
-- YouTube changes its DOM often. If the button stops appearing, videos stop
-  hiding, or native feedback stops firing, the CSS selectors in `content.js` may
-  need a refresh.
+- The token path doesn't depend on YouTube's language. The sidebar fallback
+  matches the menu item by the text "…recommend channel", so the fallback works
+  on **English** YouTube only.
+- How long a saved token stays valid isn't known yet. Each send's token age is in
+  the send log; a token YouTube no longer accepts falls back to the sidebar.
+- The command dispatch YouTube uses isn't a documented API. `page.js` tries two
+  ways of calling it and records which one worked.
+- YouTube changes its page data and DOM often. If the button stops appearing or
+  the signal stops sending, `page.js` and the selectors in `content.js` may need a
+  refresh.

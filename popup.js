@@ -1,8 +1,7 @@
-const STORAGE_KEY = "blockedChannels";
+const HISTORY_KEY = "blockHistory";
 const SETTINGS_KEY = "settings";
 
 const DEFAULT_SETTINGS = {
-  nativeFeedback: true,
   shortcut: { key: "b", shift: true, alt: false, ctrl: false, meta: false },
 };
 
@@ -10,42 +9,39 @@ const listEl = document.getElementById("list");
 const emptyEl = document.getElementById("empty");
 const countEl = document.getElementById("count");
 
-function get(cb) {
-  chrome.storage.local.get(STORAGE_KEY, (res) =>
-    cb(Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [])
+function getHistory(cb) {
+  chrome.storage.local.get(HISTORY_KEY, (res) =>
+    cb(Array.isArray(res[HISTORY_KEY]) ? res[HISTORY_KEY] : [])
   );
 }
-function set(entries, cb) {
-  chrome.storage.local.set({ [STORAGE_KEY]: entries }, cb);
+function setHistory(entries, cb) {
+  chrome.storage.local.set({ [HISTORY_KEY]: entries }, cb);
 }
 
-// Build a channel URL from the entry's keys so the user can jump to it.
 function channelUrl(entry) {
-  for (const k of entry.keys) {
+  for (const k of entry.keys || []) {
     if (k.startsWith("handle:")) return "https://www.youtube.com/" + k.slice(7);
-    if (k.startsWith("id:"))
-      return "https://www.youtube.com/channel/" + k.slice(3);
-    if (k.startsWith("legacy:"))
-      return "https://www.youtube.com/c/" + k.slice(7);
+    if (k.startsWith("id:")) return "https://www.youtube.com/channel/" + k.slice(3);
+    if (k.startsWith("legacy:")) return "https://www.youtube.com/c/" + k.slice(7);
   }
   return "https://www.youtube.com/";
 }
 
 function keyLabel(entry) {
-  const handle = entry.keys.find((k) => k.startsWith("handle:"));
+  const handle = (entry.keys || []).find((k) => k.startsWith("handle:"));
   if (handle) return handle.slice(7);
-  const id = entry.keys.find((k) => k.startsWith("id:"));
+  const id = (entry.keys || []).find((k) => k.startsWith("id:"));
   if (id) return id.slice(3);
-  return entry.keys[0] || "";
+  return (entry.keys && entry.keys[0]) || "";
 }
 
 function render(entries) {
-  entries.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+  entries.sort((a, b) => (b.at || 0) - (a.at || 0));
   countEl.textContent = String(entries.length);
   listEl.innerHTML = "";
   emptyEl.hidden = entries.length > 0;
 
-  entries.forEach((entry, i) => {
+  entries.forEach((entry) => {
     const li = document.createElement("li");
 
     const name = document.createElement("div");
@@ -64,11 +60,20 @@ function render(entries) {
     const rm = document.createElement("button");
     rm.className = "remove";
     rm.textContent = "×";
-    rm.title = "Unblock";
+    rm.title = "Remove from this list";
     rm.addEventListener("click", () => {
-      get((cur) => {
-        cur.splice(i, 1);
-        set(cur, () => render(cur));
+      // Remove by channel identity, not list index (display is date-sorted while
+      // storage keeps insertion order, so indexes wouldn't line up).
+      // An entry with no keys (channel known by name only) is matched by its
+      // name and time instead.
+      getHistory((cur) => {
+        const hasKeys = Array.isArray(entry.keys) && entry.keys.length > 0;
+        const next = cur.filter((e) =>
+          hasKeys
+            ? !(e.keys && e.keys.some((k) => entry.keys.includes(k)))
+            : !(e.at === entry.at && e.name === entry.name)
+        );
+        setHistory(next, () => render(next));
       });
     });
 
@@ -79,11 +84,12 @@ function render(entries) {
 }
 
 document.getElementById("clear").addEventListener("click", () => {
-  if (confirm("Unblock all channels?")) set([], () => render([]));
+  if (confirm("Clear the blocked-channels list? (This does not un-tell YouTube.)"))
+    setHistory([], () => render([]));
 });
 
 document.getElementById("export").addEventListener("click", () => {
-  get((entries) => {
+  getHistory((entries) => {
     const blob = new Blob([JSON.stringify(entries, null, 2)], {
       type: "application/json",
     });
@@ -96,41 +102,8 @@ document.getElementById("export").addEventListener("click", () => {
   });
 });
 
-const importFile = document.getElementById("import-file");
-document
-  .getElementById("import")
-  .addEventListener("click", () => importFile.click());
-importFile.addEventListener("change", () => {
-  const file = importFile.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const imported = JSON.parse(reader.result);
-      if (!Array.isArray(imported)) throw new Error("bad format");
-      get((cur) => {
-        const seen = new Set(cur.flatMap((e) => e.keys));
-        for (const e of imported) {
-          if (!e || !Array.isArray(e.keys)) continue;
-          if (e.keys.some((k) => seen.has(k))) continue;
-          e.keys.forEach((k) => seen.add(k));
-          cur.push(e);
-        }
-        set(cur, () => render(cur));
-      });
-    } catch {
-      alert("Couldn't read that file.");
-    }
-  };
-  reader.readAsText(file);
-  importFile.value = "";
-});
+/* Shortcut rebinding --------------------------------------------------- */
 
-/* -------------------------------------------------------------------- */
-/* Settings: native feedback toggle + shortcut rebinding                */
-/* -------------------------------------------------------------------- */
-
-const nativeEl = document.getElementById("native");
 const shortcutEl = document.getElementById("shortcut");
 let settings = { ...DEFAULT_SETTINGS };
 
@@ -148,17 +121,9 @@ function saveSettings() {
   chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 }
 
-function loadSettings() {
-  chrome.storage.local.get(SETTINGS_KEY, (res) => {
-    settings = { ...DEFAULT_SETTINGS, ...(res[SETTINGS_KEY] || {}) };
-    nativeEl.checked = settings.nativeFeedback !== false;
-    shortcutEl.textContent = shortcutLabel(settings.shortcut);
-  });
-}
-
-nativeEl.addEventListener("change", () => {
-  settings.nativeFeedback = nativeEl.checked;
-  saveSettings();
+chrome.storage.local.get(SETTINGS_KEY, (res) => {
+  settings = { ...DEFAULT_SETTINGS, ...(res[SETTINGS_KEY] || {}) };
+  shortcutEl.textContent = shortcutLabel(settings.shortcut);
 });
 
 let recording = false;
@@ -171,7 +136,6 @@ shortcutEl.addEventListener("click", () => {
 document.addEventListener("keydown", (e) => {
   if (!recording) return;
   e.preventDefault();
-  // Ignore lone modifier presses; wait for a real key.
   if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
   if (e.key === "Escape") {
     recording = false;
@@ -192,5 +156,4 @@ document.addEventListener("keydown", (e) => {
   shortcutEl.textContent = shortcutLabel(settings.shortcut);
 });
 
-get(render);
-loadSettings();
+getHistory(render);
