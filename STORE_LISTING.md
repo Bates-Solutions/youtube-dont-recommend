@@ -59,8 +59,10 @@ they're watching, from the watch page.
 ## Assets checklist
 
 - [x] Icon 128×128 (icons/icon128.png)
-- [ ] Screenshot(s) 1280×800 or 640×400, at least one. Suggested shots:
-      1. A watch page with the "🚫 Don't recommend" button next to Subscribe.
-      2. The popup with a few channels and the shortcut setting.
+- [x] Screenshots, 1280×800, uploaded in this order:
+      1. `screenshots/1-watch-page.png`: a watch page after a click, the button
+         reading "Told YouTube" next to Subscribe.
+      2. `screenshots/2-popup.png`: the popup with a signalled channel and the
+         shortcut setting.
 - [ ] Privacy policy URL (host PRIVACY.md somewhere public, e.g. a GitHub repo).
 - [ ] (Optional) Small promo tile 440×280.
