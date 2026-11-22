@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "YouTube: Don't Recommend Channel",
   "version": "1.1.0",
-  "description": "One-click 'Don't recommend channel' while watching. Adds a button (and shortcut) to the watch page that sends YouTube's own block signal for the current channel.",
+  "description": "Tell YouTube \"Don't recommend channel\" while you watch: one click or Shift+B on the watch page sends YouTube's own signal.",
   "permissions": [
     "storage"
   ],
