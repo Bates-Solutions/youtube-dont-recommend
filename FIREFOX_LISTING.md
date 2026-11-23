@@ -45,14 +45,18 @@ the shortcut, and exports the list as JSON.
 No accounts, no tracking, no data sent to the developer. You need to be signed in
 to YouTube.
 
-## Categories (up to 2)
+## Categories
 
 - Photos, Music & Videos
-- Other
+
+AMO doesn't accept "Other" alongside another category.
 
 ## Tags
 
-youtube, recommendations, block channel
+youtube, content blocker
+
+AMO tags come from a fixed list (`https://addons.mozilla.org/api/v5/addons/tags/`); "recommendations"
+and "block channel" aren't on it.
 
 ## Support
 
@@ -70,8 +74,11 @@ Tick "This add-on has a privacy policy" and paste [PRIVACY.md](PRIVACY.md).
 ## Data collection
 
 The manifest declares `data_collection_permissions: { required: ["none"] }`, so Firefox shows no
-data-collection prompt and the listing says it collects no data. That matches PRIVACY.md: everything
-stays in the browser's local extension storage.
+data-collection prompt and the listing says it collects no data. That matches PRIVACY.md: what the
+extension stores stays in the browser's local extension storage. Its only network request is YouTube's
+own `/youtubei/v1/feedback` call, made only when the user clicks the button or presses the shortcut,
+to www.youtube.com under the user's own session, carrying only a token YouTube issued. Nothing is sent
+to the developer or any third party.
 
 ## Notes to reviewer
 
@@ -79,13 +86,23 @@ The extension has two content scripts on www.youtube.com:
 
 - `page.js` runs in the page's own world (`"world": "MAIN"`). It reads the "Don't recommend channel"
   feedback token YouTube attaches to each recommended video, from `ytInitialData`, the
-  `yt-navigate-finish` event, and the JSON responses of the page's own `/youtubei/v1` `fetch`
-  calls, which it wraps to read. It doesn't change the requests or send their contents anywhere.
-  When the user clicks the button, it asks the page to send that feedback, the same way YouTube's
-  own 3-dots menu does, and watches YouTube's `/feedback` response to confirm it.
+  `yt-navigate-finish` event, and the JSON responses of the page's own `fetch` calls to
+  `/youtubei/v1/` `next`, `browse`, `search`, `player` and `feedback`, which it wraps to read.
+  For `/feedback` it also reads the request body, to match the response to the token sent. It
+  doesn't change any request or send their contents anywhere.
+- To send, `page.js` builds a fresh "Don't recommend channel" feedback command from a validated
+  token (it never runs a command it was handed) and passes it to YouTube's own command handler,
+  `ytd-app.resolveCommand`, or failing that dispatches a `yt-action` event, the same path
+  YouTube's 3-dots menu uses. It then watches YouTube's `/feedback` response to confirm it.
+- If there is no token for the channel, `content.js` falls back to opening the 3-dots menu on one
+  of the channel's thumbnails and clicking its "Don't recommend channel" item with synthetic
+  clicks. While it does, a CSS rule (`data-ydr-driving` on the root element) hides the menu popup
+  so it doesn't flash.
+- Both send paths run only when the user clicks the button or presses the shortcut.
 - `content.js` runs in the isolated world. It adds the button and the Shift+B shortcut, validates
-  the tokens `page.js` reports before storing them, and keeps the history in
-  `storage.local`. The two scripts exchange JSON strings through `CustomEvent`s on `document`.
+  the tokens `page.js` reports before storing them, and keeps everything in `storage.local`:
+  the channel history and shortcut setting, the token cache (up to 1,000, each with its video and
+  channel ID) and a log of the last 100 sends. The two scripts exchange JSON strings through `CustomEvent`s on `document`.
 
 No remote code is loaded and nothing is sent anywhere except YouTube's own feedback request, under
 the user's YouTube session, when they ask. To test it: sign in to YouTube, open any video, and click
