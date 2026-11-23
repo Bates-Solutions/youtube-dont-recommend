@@ -97,8 +97,11 @@ document.getElementById("export").addEventListener("click", () => {
     const a = document.createElement("a");
     a.href = url;
     a.download = "blocked-channels.json";
+    document.body.append(a);
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    // Revoking straight after click() can cancel the download in Firefox.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 });
 

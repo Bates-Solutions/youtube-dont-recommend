@@ -17,7 +17,7 @@ This extension is designed to collect **no personal data**.
   was, and whether YouTube accepted it.
 
 All of this is saved **locally in your browser** using `chrome.storage.local`,
-which Chrome does not sync between devices. It never leaves your device except
+which the browser does not sync between devices. It never leaves your device except
 through the Export button, which saves the channel list to a file where you
 choose.
 
