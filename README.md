@@ -7,8 +7,8 @@
 
 # YouTube: Don't Recommend Channel
 
-A Chromium extension that tells YouTube to stop recommending a channel while you watch one of its
-videos.
+A Chrome and Firefox extension that tells YouTube to stop recommending a channel while you watch
+one of its videos.
 
 [![License: MIT](https://img.shields.io/github/license/Bates-Solutions/youtube-dont-recommend)](LICENSE)
 
@@ -20,7 +20,7 @@ extension sends YouTube's own "Don't recommend channel" feedback for that channe
 as the item in a thumbnail's 3-dots menu. Because it's YouTube's own signal, it applies to your
 whole account, on every device, not just this browser.
 
-It works in Chrome, Brave, Edge and Vivaldi.
+It works in Chrome, Brave, Edge, Vivaldi and Firefox (140 or later).
 
 ## Features
 
@@ -39,12 +39,22 @@ What it does and doesn't do:
 
 ## Install
 
-It isn't in the Chrome Web Store yet. To install it from source:
+It isn't in the Chrome Web Store or on Firefox Add-ons yet. To install it from source in Chrome,
+Brave, Edge or Vivaldi:
 
 1. Open `chrome://extensions` (or `brave://extensions`, `edge://extensions`).
 2. Turn on **Developer mode** (top right).
 3. Choose **Load unpacked** and select this folder.
 4. Open any YouTube video. A **🚫 Don't recommend** button appears next to Subscribe.
+
+In Firefox:
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Choose **Load Temporary Add-on** and select `manifest.json` in this folder.
+3. Open any YouTube video. A **🚫 Don't recommend** button appears next to Subscribe.
+
+Firefox removes a temporary add-on when it restarts. It stays installed once it's on Firefox
+Add-ons. Your list of channels is kept separately in each browser.
 
 ## Usage
 
