@@ -20,7 +20,7 @@ extension sends YouTube's own "Don't recommend channel" feedback for that channe
 as the item in a thumbnail's 3-dots menu. Because it's YouTube's own signal, it applies to your
 whole account, on every device, not just this browser.
 
-It works in Chrome, Brave, Edge, Vivaldi and Firefox (140 or later).
+It works in Chrome, Brave, Edge, Vivaldi and Firefox desktop (140 or later).
 
 ## Features
 
@@ -47,14 +47,19 @@ Brave, Edge or Vivaldi:
 3. Choose **Load unpacked** and select this folder.
 4. Open any YouTube video. A **🚫 Don't recommend** button appears next to Subscribe.
 
+Chrome may list an "Unrecognized manifest key 'browser_specific_settings'" warning on the
+extension's card. That key is for Firefox; the extension works regardless.
+
 In Firefox:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Choose **Load Temporary Add-on** and select `manifest.json` in this folder.
 3. Open any YouTube video. A **🚫 Don't recommend** button appears next to Subscribe.
 
-Firefox removes a temporary add-on when it restarts. It stays installed once it's on Firefox
-Add-ons. Your list of channels is kept separately in each browser.
+Firefox removes a temporary add-on when it restarts. To keep it installed before it's on Firefox
+Add-ons, sign it for yourself with `npx web-ext sign --channel=unlisted` (it needs a free
+Firefox Add-ons API key), or use Firefox Developer Edition or Nightly with
+`xpinstall.signatures.required` set to `false` in `about:config`. Your list of channels is kept separately in each browser.
 
 ## Usage
 
